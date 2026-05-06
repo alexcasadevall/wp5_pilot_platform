@@ -94,8 +94,8 @@ class TestFormatAgentProfiles:
     def test_profiles_with_content(self):
         profiles = {"Performer 1": "Took a sceptical stance", "Performer 2": ""}
         result = format_agent_profiles(profiles)
-        assert "**Performer 1**: Took a sceptical stance" in result
-        assert "**Performer 2**: (This performer has not acted yet.)" in result
+        assert "**Performer 1**: recent=Took a sceptical stance" in result
+        assert "**Performer 2**: recent=not acted yet" in result
 
     def test_profiles_with_traits(self):
         profiles = {"Performer 1": "Took a sceptical stance"}
@@ -209,6 +209,17 @@ class TestBuildActionSystemPrompt:
         assert "Protect the participant from severe direct abuse" in prompt
         assert 'Mild direct labels such as "ingenuo" or "ignorante" are acceptable' in prompt
         assert "must not use severe direct insults against the participant" in prompt
+
+    def test_uses_same_cell_not_same_ideology_for_infighting_rule(self):
+        prompt = build_action_system_prompt(
+            chatroom_context="Debate migratorio",
+            participant_stance_hint="participant self-report: against the article",
+            participant_alignment_cell="participant alignment cell: anti_policy_anti_topic",
+            participant_name="Martin",
+        )
+        assert "No same-cell infighting" in prompt
+        assert "share the same fixed `alignment_cell`" in prompt
+        assert "share the same `alignment_cell` must not be instructed to attack each other" in prompt
 
     def test_evaluate_prompt_requests_short_assessments(self):
         prompt = build_evaluate_system_prompt(

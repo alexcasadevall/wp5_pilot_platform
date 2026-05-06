@@ -88,9 +88,9 @@ export const CLIMATE_CHANGE_AGENT_POOL: PoolAgent[] = [
     "cl_appt_c2",
     "Pablo",
     "civil",
-    "right",
+    "left",
     "anti_policy_pro_topic",
-    "Pablo, 28, acepta la necesidad de actuar contra el cambio climatico, pero duda de que este acuerdo vaya a funcionar tal como esta planteado. Pide pruebas, costes concretos y plazos realistas.",
+    "Pablo, 28, es claramente favorable a la accion climatica, pero cree que este acuerdo se queda corto y reparte mal los costes. Le preocupa que se venda como transformador cuando no protege lo suficiente a la gente comun ni acelera la transicion como deberia. Habla con calma, desde una sensibilidad progresista, y pide un plan mas ambicioso y mejor diseniado.",
   ),
   buildCell(
     "cl_appt_u1",
@@ -189,9 +189,9 @@ export const IMMIGRATION_AGENT_POOL: PoolAgent[] = [
     "im_appt_c2",
     "Pablo",
     "civil",
-    "right",
+    "left",
     "anti_policy_pro_topic",
-    "Pablo, 28, cree que la inmigracion puede gestionarse mejor y no le convence este plan tal como esta planteado. Pide controles claros, recursos, seguimiento y plazos realistas. Habla con prudencia y pide detalles.",
+    "Pablo, 28, esta a favor de una politica migratoria abierta y de regularizar con derechos, pero cree que este plan esta mal armado y se queda corto en garantias, recursos y seguimiento. No cuestiona la inmigracion; cuestiona que se venda un parche administrativo como si resolviera la integracion de verdad. Habla con prudencia, desde una sensibilidad progresista, y pide detalles concretos.",
   ),
   buildCell(
     "im_appt_u1",

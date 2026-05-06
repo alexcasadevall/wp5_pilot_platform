@@ -190,6 +190,62 @@ class TestOrchestratorInit:
         orch, _ = _make_orchestrator(state=state)
         assert orch._participant_alignment_cell_live() == "anti_policy_anti_topic"
 
+    def test_candidate_filter_prioritizes_like_minded_when_like_target_is_behind(self):
+        state = _make_state(
+            participant_stance_hint="qualified_against",
+            agents=[Agent(name="Alice"), Agent(name="Bob"), Agent(name="Carol")],
+        )
+        state.add_message(Message.create(sender="Bob", content="x", is_incivil=True))
+        state.add_message(Message.create(sender="Carol", content="y", is_incivil=False))
+        orch, _ = _make_orchestrator(
+            state=state,
+            agent_traits={
+                "Alice": {"alignment_cell": "anti_policy_pro_topic", "incivility": "civil"},
+                "Bob": {"alignment_cell": "pro_policy_pro_topic", "incivility": "uncivil"},
+                "Carol": {"alignment_cell": "anti_policy_anti_topic", "incivility": "civil"},
+            },
+        )
+        filtered = orch._filter_candidate_agents_for_targets(
+            "LIKEMINDED_TARGET = 80\nNOT_LIKEMINDED_TARGET = 20\nINCIVILITY_TARGET = 50",
+            {"Alice", "Bob", "Carol"},
+        )
+        assert filtered == {"Alice"}
+
+    def test_candidate_filter_intersects_alignment_and_uncivility_targets(self):
+        state = _make_state(
+            participant_stance_hint="qualified_against",
+            agents=[Agent(name="Alice"), Agent(name="Bob"), Agent(name="Carol"), Agent(name="Dora")],
+        )
+        state.add_message(Message.create(sender="Bob", content="x", is_incivil=False))
+        state.add_message(Message.create(sender="Carol", content="y", is_incivil=False))
+        orch, _ = _make_orchestrator(
+            state=state,
+            agent_traits={
+                "Alice": {"alignment_cell": "anti_policy_pro_topic", "incivility": "uncivil"},
+                "Bob": {"alignment_cell": "pro_policy_pro_topic", "incivility": "civil"},
+                "Carol": {"alignment_cell": "anti_policy_anti_topic", "incivility": "civil"},
+                "Dora": {"alignment_cell": "anti_policy_pro_topic", "incivility": "civil"},
+            },
+        )
+        filtered = orch._filter_candidate_agents_for_targets(
+            "LIKEMINDED_TARGET = 80\nNOT_LIKEMINDED_TARGET = 20\nINCIVILITY_TARGET = 80",
+            {"Alice", "Bob", "Carol", "Dora"},
+        )
+        assert filtered == {"Alice"}
+
+    def test_same_cell_guard_does_not_trigger_for_same_ideology_different_cells(self):
+        state = _make_state(
+            agents=[Agent(name="Alice"), Agent(name="Bob")],
+        )
+        orch, _ = _make_orchestrator(
+            state=state,
+            agent_traits={
+                "Alice": {"alignment_cell": "pro_policy_pro_topic", "ideology": "left"},
+                "Bob": {"alignment_cell": "anti_policy_pro_topic", "ideology": "left"},
+            },
+        )
+        assert orch._agents_share_alignment_cell("Alice", "Bob") is False
+
 
 # ── execute_turn: first turn (skip Update, warm-up Evaluate) ─────────────────
 
@@ -638,7 +694,7 @@ class TestSameSideGuard:
         assert result.message.quoted_text is None
         logger.log_error.assert_any_call(
             "director_same_side_target",
-            "Director targeted same-side agents 'Alice' -> 'Bob'; converting to a non-targeted message",
+            "Director targeted same-cell agents 'Alice' -> 'Bob'; converting to a non-targeted message",
         )
 
     @pytest.mark.asyncio
@@ -672,7 +728,7 @@ class TestSameSideGuard:
         assert not result.message.content.startswith("@Bob")
         logger.log_error.assert_any_call(
             "director_same_side_target",
-            "Director targeted same-side agents 'Alice' -> 'Bob'; converting to a non-targeted message",
+            "Director targeted same-cell agents 'Alice' -> 'Bob'; converting to a non-targeted message",
         )
 
 

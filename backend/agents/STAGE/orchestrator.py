@@ -340,24 +340,16 @@ class Orchestrator:
             return "center"
         return None
 
-    def _agents_share_measure_side(self, actor_name: Optional[str], target_name: Optional[str]) -> bool:
-        """Return True when both agents hold the same non-neutral ideology on the measure."""
+    def _agents_share_alignment_cell(self, actor_name: Optional[str], target_name: Optional[str]) -> bool:
+        """Return True when both agents belong to the same fixed alignment cell."""
         if not actor_name or not target_name or actor_name == target_name:
             return False
 
         actor_traits = self._agent_traits.get(actor_name) or {}
         target_traits = self._agent_traits.get(target_name) or {}
-        actor_ideology = self._normalize_agent_ideology(
-            actor_traits.get("ideology") or actor_traits.get("stance")
-        )
-        target_ideology = self._normalize_agent_ideology(
-            target_traits.get("ideology") or target_traits.get("stance")
-        )
-        return (
-            actor_ideology is not None
-            and actor_ideology != "center"
-            and actor_ideology == target_ideology
-        )
+        actor_cell = self._agent_alignment_cell_from_traits(actor_traits)
+        target_cell = self._agent_alignment_cell_from_traits(target_traits)
+        return actor_cell is not None and actor_cell == target_cell
 
     @staticmethod
     def _normalize_participant_stance_hint(raw_stance: Optional[str]) -> Optional[str]:
@@ -579,6 +571,100 @@ class Orchestrator:
         if agent_cell is None:
             return None
         return agent_cell == participant_cell
+
+    @staticmethod
+    def _extract_target_percent(criteria: str, key: str) -> Optional[int]:
+        """Extract an integer percentage target from the internal validity criteria text."""
+        if not criteria:
+            return None
+        match = re.search(rf"{re.escape(key)}\s*=\s*(\d+)", criteria)
+        if not match:
+            return None
+        try:
+            return int(match.group(1))
+        except (TypeError, ValueError):
+            return None
+
+    def _agent_civility_bucket(self, agent_name: str) -> Optional[str]:
+        """Return the fixed civility bucket of an agent, if known."""
+        traits = self._agent_traits.get(agent_name) or {}
+        value = str(traits.get("incivility", "")).strip().lower()
+        if value in {"civil", "uncivil"}:
+            return value
+        return None
+
+    def _filter_candidate_agents_for_targets(
+        self,
+        internal_validity_criteria: str,
+        candidate_agent_names: Set[str],
+    ) -> Set[str]:
+        """Restrict the Director's candidate pool to the side/tone currently needed most.
+
+        This turns alignment and civility treatment rules into a hard pre-filter
+        rather than a soft prompt instruction.
+        """
+        candidates = {
+            name for name in candidate_agent_names
+            if any(agent.name == name for agent in self.state.agents)
+        }
+        if not candidates:
+            return candidate_agent_names
+
+        like_target = self._extract_target_percent(internal_validity_criteria, "LIKEMINDED_TARGET")
+        not_like_target = self._extract_target_percent(internal_validity_criteria, "NOT_LIKEMINDED_TARGET")
+        incivil_target = self._extract_target_percent(internal_validity_criteria, "INCIVILITY_TARGET")
+
+        agent_messages = [
+            message for message in self.state.messages
+            if message.sender != self.state.user_name
+        ]
+        total_messages = len(agent_messages)
+
+        filtered = set(candidates)
+
+        if total_messages > 0 and like_target is not None and not_like_target is not None:
+            like_count = sum(
+                1 for message in agent_messages
+                if self._expected_like_minded_for_agent(message.sender) is True
+            )
+            not_like_count = sum(
+                1 for message in agent_messages
+                if self._expected_like_minded_for_agent(message.sender) is False
+            )
+            current_like_pct = (100.0 * like_count / total_messages)
+            current_not_like_pct = (100.0 * not_like_count / total_messages)
+            like_gap = like_target - current_like_pct
+            not_like_gap = not_like_target - current_not_like_pct
+
+            if like_gap > 0 or not_like_gap > 0:
+                target_like_value = True if like_gap >= not_like_gap else False
+                alignment_filtered = {
+                    name for name in filtered
+                    if self._expected_like_minded_for_agent(name) is target_like_value
+                }
+                if alignment_filtered:
+                    filtered = alignment_filtered
+
+        classified_incivility = [message for message in agent_messages if message.is_incivil is not None]
+        if classified_incivility and incivil_target is not None:
+            incivil_count = sum(1 for message in classified_incivility if message.is_incivil)
+            civil_count = sum(1 for message in classified_incivility if message.is_incivil is False)
+            current_incivil_pct = 100.0 * incivil_count / len(classified_incivility)
+            current_civil_pct = 100.0 * civil_count / len(classified_incivility)
+            civil_target = max(0, 100 - incivil_target)
+            incivil_gap = incivil_target - current_incivil_pct
+            civil_gap = civil_target - current_civil_pct
+
+            if incivil_gap > 0 or civil_gap > 0:
+                target_civility = "uncivil" if incivil_gap >= civil_gap else "civil"
+                civility_filtered = {
+                    name for name in filtered
+                    if self._agent_civility_bucket(name) == target_civility
+                }
+                if civility_filtered:
+                    filtered = civility_filtered
+
+        return filtered or candidates
 
     def _message_contradicts_fixed_stance(
         self,
@@ -853,18 +939,22 @@ class Orchestrator:
         speaking_agent_names = {a.name for a in agents if a.name != self.state.user_name}
         capped_speaker, capped_streak = self._trailing_speaker_streak(recent_action, speaking_agent_names)
         disallowed_speaker = capped_speaker if capped_streak >= 2 else None
-        if allowed_performers is not None:
-            allowed_anon = {self._name_map[n] for n in allowed_performers if n in self._name_map}
-            # Always include the human so the Director can still yield ('wait').
-            allowed_anon.add(self._anon_user)
-            if disallowed_speaker and disallowed_speaker in self._name_map:
-                allowed_anon.discard(self._name_map[disallowed_speaker])
-            action_profiles = {k: v for k, v in self.agent_profiles.items() if k in allowed_anon}
-            action_perf_counts = {k: v for k, v in self._performer_counts.items() if k in allowed_anon}
-        elif disallowed_speaker and disallowed_speaker in self._name_map:
-            disallowed_anon = self._name_map[disallowed_speaker]
-            action_profiles = {k: v for k, v in self.agent_profiles.items() if k != disallowed_anon}
-            action_perf_counts = {k: v for k, v in self._performer_counts.items() if k != disallowed_anon}
+        base_allowed_real = (
+            set(allowed_performers)
+            if allowed_performers is not None
+            else {a.name for a in agents if a.name != self.state.user_name}
+        )
+        if disallowed_speaker:
+            base_allowed_real.discard(disallowed_speaker)
+        filtered_allowed_real = self._filter_candidate_agents_for_targets(
+            internal_validity_criteria,
+            base_allowed_real,
+        )
+        allowed_anon = {self._name_map[n] for n in filtered_allowed_real if n in self._name_map}
+        # Always include the human so the Director can still yield ('wait').
+        allowed_anon.add(self._anon_user)
+        action_profiles = {k: v for k, v in self.agent_profiles.items() if k in allowed_anon}
+        action_perf_counts = {k: v for k, v in self._performer_counts.items() if k in allowed_anon}
 
         action_data = await self._director_action(
             anon_recent_action,
@@ -1020,23 +1110,23 @@ class Orchestrator:
                     "directive": action_data["performer_instruction"].get("directive", "Stay true to your fixed stance and character."),
                 }
 
-        # 3c. Prevent direct infighting between agents on the same side of the measure.
+        # 3c. Prevent direct infighting between agents in the same alignment cell.
         if action_type in {"reply", "@mention", "message"}:
             same_side_target = None
-            if target_user and self._agents_share_measure_side(agent_name, target_user):
+            if target_user and self._agents_share_alignment_cell(agent_name, target_user):
                 same_side_target = target_user
             elif target_message_id and target_message_id:
                 target_msg_for_guard = next(
                     (m for m in self.state.messages if m.message_id == target_message_id),
                     None,
                 )
-                if target_msg_for_guard and self._agents_share_measure_side(agent_name, target_msg_for_guard.sender):
+                if target_msg_for_guard and self._agents_share_alignment_cell(agent_name, target_msg_for_guard.sender):
                     same_side_target = target_msg_for_guard.sender
 
             if same_side_target:
                 self.logger.log_error(
                     "director_same_side_target",
-                    f"Director targeted same-side agents '{agent_name}' -> '{same_side_target}'; converting to a non-targeted message",
+                    f"Director targeted same-cell agents '{agent_name}' -> '{same_side_target}'; converting to a non-targeted message",
                 )
                 action_type = "message"
                 action_data["action_type"] = "message"
@@ -1045,9 +1135,9 @@ class Orchestrator:
                 target_message_id = None
                 action_data["target_message_id"] = None
                 action_data["performer_instruction"] = {
-                    "objective": "Reinforce your side's position without attacking allied agents.",
-                    "motivation": "You agree on the measure, so infighting would feel incoherent and weaken the discussion.",
-                    "directive": "Sound supportive or additive; do not criticize, mock, or challenge agents who share your stance.",
+                    "objective": "Reinforce your cell's position without attacking allied agents.",
+                    "motivation": "You occupy the same alignment cell, so infighting would feel incoherent and weaken the discussion.",
+                    "directive": "Sound supportive or additive; do not criticize, mock, or challenge agents who share your alignment cell.",
                 }
 
         # 3b. Handle 'wait' — Director selected the human participant.
@@ -1077,7 +1167,7 @@ class Orchestrator:
                 action_rationale=action_rationale,
             )
         if not any(a.name == agent_name for a in agents):
-            pool = list(allowed_performers) if allowed_performers else [a.name for a in agents]
+            pool = list(filtered_allowed_real) if filtered_allowed_real else [a.name for a in agents]
             fallback = random.choice(pool)
             self.logger.log_error(
                 "director_agent",
@@ -1085,13 +1175,13 @@ class Orchestrator:
             )
             agent_name = fallback
 
-        # In parallel mode, enforce the allowed subset.
-        if allowed_performers and agent_name not in allowed_performers:
-            pool = list(allowed_performers)
+        # Enforce the filtered subset used for this Director call.
+        if filtered_allowed_real and agent_name not in filtered_allowed_real:
+            pool = list(filtered_allowed_real)
             fallback = random.choice(pool)
             self.logger.log_error(
                 "director_agent_restricted",
-                f"Director chose '{agent_name}' outside its pipeline subset; "
+                f"Director chose '{agent_name}' outside its filtered treatment subset; "
                 f"falling back to '{fallback}'",
             )
             agent_name = fallback
