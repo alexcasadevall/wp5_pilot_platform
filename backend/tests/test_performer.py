@@ -68,17 +68,38 @@ class TestBuildPerformerSystemPrompt:
         result = build_performer_system_prompt()
         assert "Only output the chat message" in result
         assert "write the message itself and stop" in result
-        assert "default to 1-3 short sentences" in result
-        assert "Sometimes 4 short sentences are fine" in result
-        assert "stay strictly within 2-4 short sentences" in result
+        assert "maximum 4 short sentences" in result
+        assert "stay within 1-3 sentences" in result
         assert "Very short outbursts are fine" in result
         assert "Keep the same position" in result
+        assert "Your alignment cell is fixed" in result
         assert "Sound like Telegram" in result
         assert "Vary the shape" in result
-        assert "Be creative but natural" in result
         assert "If you are hostile, aim it clearly" in result
         assert "Do not sound furious at nobody in particular" in result
         assert "Keep punctuation light" in result
+
+    def test_system_prompt_includes_fixed_alignment_traits(self):
+        result = build_performer_system_prompt(
+            agent_name="Lucia",
+            agent_traits={
+                "alignment_cell": "pro_policy_pro_topic",
+                "policy_stance": "pro_policy",
+                "topic_stance": "pro_topic",
+                "ideology": "left",
+                "incivility": "civil",
+            },
+        )
+        assert "Your Fixed Position" in result
+        assert "Alignment cell" in result
+        assert "pro_policy_pro_topic" in result
+        assert "Policy stance" in result
+        assert "Topic stance" in result
+
+    def test_system_prompt_explicitly_requires_staying_in_same_cell(self):
+        result = build_performer_system_prompt()
+        assert "Your alignment cell is fixed" in result
+        assert "Do not drift into another cell" in result
 
 
 # ── build_performer_user_prompt ────────────────────────────────────────────
