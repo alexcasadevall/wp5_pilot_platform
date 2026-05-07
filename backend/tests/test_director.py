@@ -11,7 +11,9 @@ from agents.STAGE.director import (
     format_participant_hint,
     format_participant_alignment_cell,
     build_action_system_prompt,
+    build_action_user_prompt,
     build_evaluate_system_prompt,
+    build_evaluate_user_prompt,
     parse_update_response,
     parse_evaluate_response,
     parse_action_response,
@@ -140,6 +142,43 @@ class TestFormatParticipantAlignmentCell:
         assert format_participant_alignment_cell(None) == (
             "participant alignment cell: unclear / mixed"
         )
+
+
+class TestExplicitParticipationSummaries:
+    def test_evaluate_user_prompt_uses_explicit_participation_memory(self):
+        prompt = build_evaluate_user_prompt(
+            messages=[_msg(sender="Performer 1", content="Hola", msg_id="m1")],
+            previous_internal="ok",
+            previous_ecological="ok",
+            treatment_fidelity_summary="- Like-minded messages so far: 1/1 (100%)",
+            participation_summary=(
+                "Global speaker memory:\n"
+                "- Performer 1: spoken=yes, messages=1, last_spoke=latest agent message\n"
+                "- Performer 2: spoken=no, messages=0, last_spoke=never"
+            ),
+        )
+        assert "Global speaker memory:" in prompt
+        assert "spoken=yes" in prompt
+        assert "last_spoke=never" in prompt
+
+    def test_action_user_prompt_uses_explicit_global_and_eligible_memory(self):
+        prompt = build_action_user_prompt(
+            messages=[_msg(sender="Performer 1", content="Hola", msg_id="m1")],
+            agent_profiles={"Performer 1": "", "Performer 2": ""},
+            internal_validity_summary="ok",
+            ecological_validity_summary="ok",
+            treatment_fidelity_summary="- Like-minded messages so far: 1/1 (100%)",
+            participation_summary=(
+                "Global speaker memory:\n"
+                "- Performer 1: spoken=yes, messages=1, last_spoke=latest agent message\n"
+                "- Performer 2: spoken=no, messages=0, last_spoke=never\n\n"
+                "Eligible speakers this turn:\n"
+                "- Performer 2: spoken=no, messages=0, last_spoke=never"
+            ),
+        )
+        assert "Global speaker memory:" in prompt
+        assert "Eligible speakers this turn:" in prompt
+        assert "Performer 2: spoken=no" in prompt
 
 
 class TestBuildActionSystemPrompt:

@@ -748,6 +748,78 @@ class Orchestrator:
         """Return True if the agent has already posted a message in this session."""
         return any(message.sender == agent_name for message in self.state.messages)
 
+    def _agent_messages_so_far(self) -> List[Message]:
+        """Return published agent messages, excluding the human participant."""
+        agent_names = {agent.name for agent in self.state.agents if agent.name != self.state.user_name}
+        return [
+            message
+            for message in self.state.messages
+            if message.sender in agent_names
+        ]
+
+    @staticmethod
+    def _format_turns_ago(distance: Optional[int]) -> str:
+        """Render a compact recency label for agent speaking turns."""
+        if distance is None:
+            return "never"
+        if distance == 0:
+            return "latest agent message"
+        if distance == 1:
+            return "1 agent message ago"
+        return f"{distance} agent messages ago"
+
+    def _format_participation_memory(
+        self,
+        eligible_anon_names: Optional[Set[str]] = None,
+    ) -> str:
+        """Build an explicit memory of who has spoken and how recently.
+
+        The Director needs two separate views:
+        - global speaker memory across all agents, to avoid false claims like
+          "has not spoken yet"
+        - eligible speakers this turn, so treatment filtering stays intact
+        """
+        agent_messages = self._agent_messages_so_far()
+        all_anon_agents = sorted(
+            anon_name
+            for anon_name in self._performer_counts.keys()
+            if anon_name != self._anon_user
+        )
+
+        last_index_by_real: Dict[str, int] = {}
+        count_by_real: Dict[str, int] = {}
+        for idx, message in enumerate(agent_messages):
+            count_by_real[message.sender] = count_by_real.get(message.sender, 0) + 1
+            last_index_by_real[message.sender] = idx
+
+        def _section(title: str, anon_names: List[str]) -> str:
+            lines = [title]
+            for anon_name in anon_names:
+                real_name = self._deanon_name(anon_name)
+                message_count = count_by_real.get(real_name, 0)
+                last_index = last_index_by_real.get(real_name)
+                last_spoke = self._format_turns_ago(
+                    None if last_index is None else len(agent_messages) - 1 - last_index
+                )
+                spoken = "yes" if message_count > 0 else "no"
+                lines.append(
+                    f"- {anon_name}: spoken={spoken}, messages={message_count}, last_spoke={last_spoke}"
+                )
+            return "\n".join(lines)
+
+        sections = [_section("Global speaker memory:", all_anon_agents)]
+
+        if eligible_anon_names is not None:
+            eligible_only = sorted(
+                anon_name
+                for anon_name in eligible_anon_names
+                if anon_name != self._anon_user
+            )
+            if eligible_only:
+                sections.append(_section("Eligible speakers this turn:", eligible_only))
+
+        return "\n\n".join(sections)
+
     def _count_room_wide_openers(self, agent_names: Set[str]) -> int:
         """Count first-turn room-wide opener messages already present in the session."""
         seen_speakers: Set[str] = set()
@@ -802,11 +874,7 @@ class Orchestrator:
 
     def _format_treatment_fidelity_summary(self) -> str:
         """Summarise structural alignment plus observed incivility as simple percentages."""
-        agent_messages = [
-            message
-            for message in self.state.messages
-            if message.sender != self.state.user_name
-        ]
+        agent_messages = self._agent_messages_so_far()
         if not agent_messages:
             return "(No agent messages yet.)"
 
@@ -825,6 +893,20 @@ class Orchestrator:
         classified_incivility = [message for message in agent_messages if message.is_incivil is not None]
         incivil_count = sum(1 for message in classified_incivility if message.is_incivil)
         civil_count = sum(1 for message in classified_incivility if message.is_incivil is False)
+        cell_order = [
+            "pro_policy_pro_topic",
+            "anti_policy_pro_topic",
+            "anti_policy_anti_topic",
+        ]
+        cell_counts: Dict[str, int] = {cell: 0 for cell in cell_order}
+        unknown_cell_count = 0
+        for message in agent_messages:
+            traits = self._agent_traits.get(message.sender) or {}
+            cell = self._agent_alignment_cell_from_traits(traits)
+            if cell in cell_counts:
+                cell_counts[cell] += 1
+            else:
+                unknown_cell_count += 1
 
         def _pct(count: int, base: int) -> str:
             return f"{round((count / base) * 100)}%" if base > 0 else "0%"
@@ -833,6 +915,12 @@ class Orchestrator:
             f"- Agent messages published: {total}",
             f"- Like-minded messages so far: {expected_like}/{total} ({_pct(expected_like, total)})",
             f"- Not-like-minded messages so far: {expected_not_like}/{total} ({_pct(expected_not_like, total)})",
+            "- Messages by alignment cell so far: "
+            + ", ".join(
+                f"{cell}={cell_counts[cell]}/{total} ({_pct(cell_counts[cell], total)})"
+                for cell in cell_order
+            )
+            + (f", unknown={unknown_cell_count}/{total} ({_pct(unknown_cell_count, total)})" if unknown_cell_count else ""),
         ]
         if classified_incivility:
             lines.append(
@@ -1441,7 +1529,6 @@ class Orchestrator:
         mentions = None
         reply_to = None
         quoted_text = None
-        stance_retry_count = 0
 
         # Build (or retrieve cached) per-agent performer system prompt.
         if agent_name not in self._performer_system_prompts:
@@ -1590,48 +1677,6 @@ class Orchestrator:
                 )
                 content = None
                 continue
-
-            # Stance guard: only classify when a fixed-stance check is possible,
-            # to avoid burning tokens on messages that will be discarded anyway.
-            # Classification for the final approved message happens after the loop.
-            if self._expected_like_minded_for_agent(agent_name) is not None:
-                pre_classification = await self._classify_message(agent_message=candidate_content, agent_name=agent_name)
-                if self._message_contradicts_fixed_stance(agent_name, pre_classification):
-                    expected_like_minded = self._expected_like_minded_for_agent(agent_name)
-                    actual_like_minded = pre_classification.get("is_like_minded")
-                    if stance_retry_count < MAX_STANCE_RETRIES:
-                        stance_retry_count += 1
-                        self.logger.log_error(
-                            "performer_stance_mismatch_retry",
-                            f"Generated message contradicted fixed stance for '{agent_name}'; retrying once",
-                            context={
-                                "expected_like_minded": expected_like_minded,
-                                "actual_like_minded": actual_like_minded,
-                                "action_type": action_type,
-                            },
-                        )
-                        performer_user_prompt = (
-                            f"{base_performer_user_prompt}\n\n"
-                            "Important correction:\n"
-                            "Your last draft contradicted your fixed stance on the topic.\n"
-                            "Rewrite it so it clearly stays ideologically consistent with your fixed position, "
-                            "while keeping the same action type, target, tone, and overall objective.\n"
-                            "Do not hedge or sound neutral if that would blur your stance."
-                        )
-                        content = None
-                        continue
-
-                    self.logger.log_error(
-                        "performer_stance_mismatch_exhausted",
-                        f"Generated message for '{agent_name}' still contradicted fixed stance after retry; skipping turn",
-                        context={
-                            "expected_like_minded": expected_like_minded,
-                            "actual_like_minded": actual_like_minded,
-                            "action_type": action_type,
-                        },
-                    )
-                    content = None
-                    break
 
             content = candidate_content
             mentions = candidate_mentions
@@ -1792,6 +1837,7 @@ class Orchestrator:
             treatment_fidelity_summary=self._format_treatment_fidelity_summary(),
             action_counts=self._action_counts,
             performer_counts=self._performer_counts,
+            participation_summary=self._format_participation_memory(),
             exclude_performer=self._anon_user,
             template=self.director_evaluate_prompt_template,
         )
@@ -1860,6 +1906,7 @@ class Orchestrator:
 
         profiles = override_profiles if override_profiles is not None else self.agent_profiles
         perf_counts = override_perf_counts if override_perf_counts is not None else self._performer_counts
+        eligible_anon_names = set(profiles.keys())
         anon_traits = None
         if self._agent_traits:
             anon_traits = {
@@ -1881,6 +1928,9 @@ class Orchestrator:
             participant_alignment_cell=self._participant_alignment_cell_text,
             treatment_fidelity_summary=self._format_treatment_fidelity_summary(),
             performer_counts=perf_counts,
+            participation_summary=self._format_participation_memory(
+                eligible_anon_names=eligible_anon_names,
+            ),
             action_counts=self._action_counts,
             exclude_performer=self._anon_user,
             agent_traits=anon_traits,

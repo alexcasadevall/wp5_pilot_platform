@@ -190,6 +190,72 @@ class TestOrchestratorInit:
         orch, _ = _make_orchestrator(state=state)
         assert orch._participant_alignment_cell_live() == "anti_policy_anti_topic"
 
+    def test_treatment_fidelity_summary_includes_alignment_cell_counts(self):
+        state = _make_state()
+        state.add_message(Message.create(sender="Alice", content="m1"))
+        state.add_message(Message.create(sender="Bob", content="m2"))
+        orch, _ = _make_orchestrator(
+            state=state,
+            agent_traits={
+                "Alice": {"alignment_cell": "pro_policy_pro_topic"},
+                "Bob": {"alignment_cell": "anti_policy_anti_topic"},
+            },
+        )
+
+        summary = orch._format_treatment_fidelity_summary()
+        assert "Messages by alignment cell so far:" in summary
+        assert "pro_policy_pro_topic=1/2" in summary
+        assert "anti_policy_anti_topic=1/2" in summary
+
+    @pytest.mark.asyncio
+    async def test_director_evaluate_prompt_includes_global_speaker_memory(self):
+        state = _make_state()
+        state.add_message(Message.create(sender="Alice", content="m1"))
+        orch, logger = _make_orchestrator(state=state)
+        orch.director_llm.generate_response = AsyncMock(return_value=_evaluate_json())
+
+        await orch._director_evaluate("LIKEMINDED_TARGET = 80", [])
+
+        evaluate_prompt = next(
+            kwargs["prompt"]
+            for _, kwargs in logger.log_llm_call.call_args_list
+            if kwargs.get("agent_name") == "__director_evaluate__"
+        )
+        assert "Global speaker memory:" in evaluate_prompt
+        assert "spoken=yes, messages=1, last_spoke=latest agent message" in evaluate_prompt
+        assert "spoken=no, messages=0, last_spoke=never" in evaluate_prompt
+
+    @pytest.mark.asyncio
+    async def test_director_action_prompt_includes_global_and_eligible_speaker_memory(self):
+        state = _make_state()
+        state.add_message(Message.create(sender="Alice", content="m1"))
+        state.add_message(Message.create(sender="Bob", content="m2"))
+        orch, logger = _make_orchestrator(state=state)
+        anon_alice = orch._name_map["Alice"]
+        anon_bob = orch._name_map["Bob"]
+        orch.director_llm.generate_response = AsyncMock(
+            return_value=_action_json(next_performer=anon_alice, action_type="message")
+        )
+
+        await orch._director_action(
+            anon_recent=[],
+            override_profiles={anon_alice: "", orch._anon_user: ""},
+            override_perf_counts={anon_alice: 1, orch._anon_user: 0},
+        )
+
+        action_prompt = next(
+            kwargs["prompt"]
+            for _, kwargs in logger.log_llm_call.call_args_list
+            if kwargs.get("agent_name") == "__director_action__"
+        )
+        assert "Global speaker memory:" in action_prompt
+        assert f"- {anon_alice}: spoken=yes, messages=1, last_spoke=1 agent message ago" in action_prompt
+        assert f"- {anon_bob}: spoken=yes, messages=1, last_spoke=latest agent message" in action_prompt
+        assert "Eligible speakers this turn:" in action_prompt
+        eligible_section = action_prompt.split("Eligible speakers this turn:", 1)[1]
+        assert f"- {anon_alice}: spoken=yes, messages=1, last_spoke=1 agent message ago" in eligible_section
+        assert f"- {anon_bob}:" not in eligible_section
+
     def test_candidate_filter_prioritizes_like_minded_when_like_target_is_behind(self):
         state = _make_state(
             participant_stance_hint="qualified_against",
@@ -989,7 +1055,7 @@ class TestFixedStanceGuard:
         assert "Civil messages so far: 1/2 (50%)" in summary
 
     @pytest.mark.asyncio
-    async def test_mismatched_fixed_stance_retries_once_and_keeps_second_draft(self):
+    async def legacy_mismatched_fixed_stance_retries_once_and_keeps_second_draft(self):
         state = _make_state(participant_stance_hint="against")
         orch, logger = _make_orchestrator(
             state=state,
@@ -1052,7 +1118,42 @@ class TestFixedStanceGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_repeated_fixed_stance_mismatch_becomes_wait(self):
+    async def test_classifier_runs_once_on_final_message(self):
+        state = _make_state(participant_stance_hint="against")
+        orch, _ = _make_orchestrator(
+            state=state,
+            agent_traits={"Alice": {"stance": "disagree"}},
+        )
+        anon_alice = orch._name_map["Alice"]
+
+        orch.director_llm.generate_response = AsyncMock(
+            return_value=_action_json(next_performer=anon_alice, action_type="message")
+        )
+        orch.performer_llm.generate_response = AsyncMock(
+            return_value="Este plan es una vergüenza total."
+        )
+        orch.moderator_llm.generate_response = AsyncMock(
+            return_value="Este plan es una vergüenza total."
+        )
+        orch.classifier_llm.generate_response = AsyncMock(
+            return_value=json.dumps({
+                "is_incivil": True,
+                "is_like_minded": True,
+                "stance_confidence": "high",
+                "inferred_participant_stance": "against",
+                "rationale": "Aligned",
+            })
+        )
+
+        result = await orch.execute_turn("criteria_A")
+
+        assert result is not None
+        assert result.message is not None
+        assert result.message.content == "Este plan es una vergüenza total."
+        assert orch.classifier_llm.generate_response.call_count == 1
+
+    @pytest.mark.asyncio
+    async def legacy_repeated_fixed_stance_mismatch_becomes_wait(self):
         state = _make_state(participant_stance_hint="against")
         orch, logger = _make_orchestrator(
             state=state,
@@ -1107,7 +1208,7 @@ class TestFixedStanceGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_low_confidence_stance_mismatch_does_not_trigger_retry(self):
+    async def legacy_low_confidence_stance_mismatch_does_not_trigger_retry(self):
         state = _make_state(participant_stance_hint="against")
         orch, logger = _make_orchestrator(
             state=state,
@@ -1146,7 +1247,7 @@ class TestFixedStanceGuard:
         )
 
     @pytest.mark.asyncio
-    async def test_free_text_classifier_stance_disagreement_does_not_trigger_retry(self):
+    async def legacy_free_text_classifier_stance_disagreement_does_not_trigger_retry(self):
         state = _make_state(participant_stance_hint="qualified_against")
         orch, logger = _make_orchestrator(
             state=state,
