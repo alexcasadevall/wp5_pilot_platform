@@ -111,12 +111,13 @@ class TestDeanonymizeText:
 
 class TestReplaceNames:
     def test_longer_names_replaced_first(self):
-        nm = {"Performer 1": "A", "Performer 10": "B"}
-        result = _replace_names_in_text("Performer 10 and Performer 1", nm)
-        assert result == "B and A"
+        nm = {"Ana": "A", "Anabel": "B"}
+        result = _replace_names_in_text("Anabel y Ana", nm)
+        assert result == "B y A"
 
     def test_empty_text(self):
         assert _replace_names_in_text("", {"A": "B"}) == ""
 
     def test_none_text(self):
         assert _replace_names_in_text(None, {"A": "B"}) is None
+

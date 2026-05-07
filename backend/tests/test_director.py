@@ -94,15 +94,15 @@ class TestFormatAgentProfiles:
         assert "No performer profiles yet" in result
 
     def test_profiles_with_content(self):
-        profiles = {"Performer 1": "Took a sceptical stance", "Performer 2": ""}
+        profiles = {"Alice": "Took a sceptical stance", "Bob": ""}
         result = format_agent_profiles(profiles)
-        assert "**Performer 1**: recent=Took a sceptical stance" in result
-        assert "**Performer 2**: recent=not acted yet" in result
+        assert "**Alice**: recent=Took a sceptical stance" in result
+        assert "**Bob**: recent=not acted yet" in result
 
     def test_profiles_with_traits(self):
-        profiles = {"Performer 1": "Took a sceptical stance"}
+        profiles = {"Alice": "Took a sceptical stance"}
         traits = {
-            "Performer 1": {
+            "Alice": {
                 "stance": "disagree",
                 "incivility": "uncivil",
                 "ideology": "right",
@@ -147,14 +147,14 @@ class TestFormatParticipantAlignmentCell:
 class TestExplicitParticipationSummaries:
     def test_evaluate_user_prompt_uses_explicit_participation_memory(self):
         prompt = build_evaluate_user_prompt(
-            messages=[_msg(sender="Performer 1", content="Hola", msg_id="m1")],
+            messages=[_msg(sender="Alice", content="Hola", msg_id="m1")],
             previous_internal="ok",
             previous_ecological="ok",
             treatment_fidelity_summary="- Like-minded messages so far: 1/1 (100%)",
             participation_summary=(
                 "Global speaker memory:\n"
-                "- Performer 1: spoken=yes, messages=1, last_spoke=latest agent message\n"
-                "- Performer 2: spoken=no, messages=0, last_spoke=never"
+                "- Alice: spoken=yes, messages=1, last_spoke=latest agent message\n"
+                "- Bob: spoken=no, messages=0, last_spoke=never"
             ),
         )
         assert "Global speaker memory:" in prompt
@@ -163,22 +163,22 @@ class TestExplicitParticipationSummaries:
 
     def test_action_user_prompt_uses_explicit_global_and_eligible_memory(self):
         prompt = build_action_user_prompt(
-            messages=[_msg(sender="Performer 1", content="Hola", msg_id="m1")],
-            agent_profiles={"Performer 1": "", "Performer 2": ""},
+            messages=[_msg(sender="Alice", content="Hola", msg_id="m1")],
+            agent_profiles={"Alice": "", "Bob": ""},
             internal_validity_summary="ok",
             ecological_validity_summary="ok",
             treatment_fidelity_summary="- Like-minded messages so far: 1/1 (100%)",
             participation_summary=(
                 "Global speaker memory:\n"
-                "- Performer 1: spoken=yes, messages=1, last_spoke=latest agent message\n"
-                "- Performer 2: spoken=no, messages=0, last_spoke=never\n\n"
+                "- Alice: spoken=yes, messages=1, last_spoke=latest agent message\n"
+                "- Bob: spoken=no, messages=0, last_spoke=never\n\n"
                 "Eligible speakers this turn:\n"
-                "- Performer 2: spoken=no, messages=0, last_spoke=never"
+                "- Bob: spoken=no, messages=0, last_spoke=never"
             ),
         )
         assert "Global speaker memory:" in prompt
         assert "Eligible speakers this turn:" in prompt
-        assert "Performer 2: spoken=no" in prompt
+        assert "Bob: spoken=no" in prompt
 
 
 class TestBuildActionSystemPrompt:
@@ -221,10 +221,9 @@ class TestBuildActionSystemPrompt:
             participant_alignment_cell="participant alignment cell: anti_policy_anti_topic",
             participant_name="Martin",
         )
-        assert "Targeted room messages" in prompt
+        assert "If using `message` for an underrepresented side" in prompt
         assert "must not validate or echo" in prompt
-        assert "When using `message`, make the contrast explicit" in prompt
-        assert "not to agree with, praise, or echo the participant" in prompt
+        assert "If using `message`, make the contrast explicit" in prompt
 
     def test_discourages_room_wide_openers_when_recent_anchor_exists(self):
         prompt = build_action_system_prompt(
@@ -233,8 +232,8 @@ class TestBuildActionSystemPrompt:
             participant_alignment_cell="participant alignment cell: anti_policy_anti_topic",
             participant_name="Martin",
         )
-        assert "Non-targeted room messages are exceptional" in prompt
-        assert "Treat this as a last resort, not a default action" in prompt
+        assert "A non-targeted room-wide `message` should be rare" in prompt
+        assert "Do not use `message` for older messages or for general room-wide commentary unless there is no natural target" in prompt
         assert "If the latest message already gives you a natural anchor, use it" in prompt
         assert "treat a new room-wide opener as the wrong choice" in prompt
 
@@ -247,7 +246,7 @@ class TestBuildActionSystemPrompt:
         )
         assert "Protect the participant from severe direct abuse" in prompt
         assert 'Mild direct labels such as "ingenuo" or "ignorante" are acceptable' in prompt
-        assert "must not use severe direct insults against the participant" in prompt
+        assert "must not use severe direct insults" in prompt
 
     def test_uses_same_cell_not_same_ideology_for_infighting_rule(self):
         prompt = build_action_system_prompt(
@@ -258,7 +257,7 @@ class TestBuildActionSystemPrompt:
         )
         assert "No same-cell infighting" in prompt
         assert "share the same fixed `alignment_cell`" in prompt
-        assert "share the same `alignment_cell` must not be instructed to attack each other" in prompt
+        assert "do not have them attack, mock, or directly challenge each other" in prompt
 
     def test_forbids_cross_cell_validation_and_like_minded_attacks_on_participant(self):
         prompt = build_action_system_prompt(
@@ -272,14 +271,14 @@ class TestBuildActionSystemPrompt:
         assert "must not attack, blame, mock, or undermine the participant" in prompt
         assert "Agents may only explicitly validate, agree with, echo, or back up other agents from their own exact `alignment_cell`" in prompt
 
-    def test_marks_anonymous_performer_labels_as_stable(self):
+    def test_marks_real_agent_names_as_stable(self):
         prompt = build_action_system_prompt(
             chatroom_context="Debate migratorio",
             participant_stance_hint="participant self-report: against the article",
             participant_alignment_cell="participant alignment cell: anti_policy_anti_topic",
             participant_name="Martin",
         )
-        assert "Performer labels are stable" in prompt
+        assert "Use real agent names as stable labels" in prompt
         assert "do **not** change from turn to turn" in prompt
         assert "`next_performer` must exactly match one visible performer label from `AGENT_PROFILES`" in prompt
 

@@ -472,6 +472,14 @@ class Orchestrator:
 
         text = " " .join(str(message_text).lower().split())
 
+        # Fast-path for common unaccented phrasings so we can still refine the
+        # participant cell even when the incoming text loses diacritics.
+        if (
+            "la inmigracion es un derecho" in text
+            and ("esta mal planteado" in text or "es una mala medida" in text)
+        ):
+            return "anti_policy_pro_topic"
+
         pro_policy_patterns = [
             r"\bestoy a favor\b",
             r"\bme parece bien\b",

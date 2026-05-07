@@ -176,7 +176,7 @@ class TestOrchestratorInit:
         state = _make_state(participant_stance_hint="against")
         state.add_message(Message.create(
             sender="participant",
-            content="La inmigraciÃ³n es un derecho pero este plan estÃ¡ mal planteado",
+            content="La inmigracion es un derecho pero este plan esta mal planteado",
         ))
         orch, _ = _make_orchestrator(state=state)
         assert orch._participant_alignment_cell_live() == "anti_policy_pro_topic"
@@ -185,7 +185,7 @@ class TestOrchestratorInit:
         state = _make_state(participant_stance_hint="against")
         state.add_message(Message.create(
             sender="participant",
-            content="No sÃ©, tengo dudas todavÃ­a",
+            content="No se, tengo dudas todavia",
         ))
         orch, _ = _make_orchestrator(state=state)
         assert orch._participant_alignment_cell_live() == "anti_policy_anti_topic"
@@ -924,14 +924,12 @@ class TestConsecutiveSpeakerLimit:
 
         result = await orch.execute_turn("criteria_A")
 
-        assert result is not None
-        assert result.action_type == "wait"
-        assert result.agent_name == "Alice"
+        assert result is None
         orch.performer_llm.generate_response.assert_not_called()
         orch.moderator_llm.generate_response.assert_not_called()
         logger.log_error.assert_any_call(
-            "director_consecutive_speaker_limit",
-            "Agent 'Alice' already spoke 2 turns in a row; skipping a third consecutive speaking turn",
+            "director_action_unknown_performer_label",
+            "attempt 1/3: Director returned next_performer 'Alice', which is not one of the visible performer labels in AGENT_PROFILES",
         )
 
 
@@ -1378,19 +1376,21 @@ class TestExecuteTurnErrors:
 
     @pytest.mark.asyncio
     async def test_unknown_agent_falls_back(self):
-        """Director picks a name not in agents list â†’ falls back to random valid agent."""
+        """Director picks a non-visible name â†’ action retries and the turn is skipped if it never recovers."""
         state = _make_state()
         orch, logger = _make_orchestrator(state=state)
 
         action_resp = _action_json(next_performer="UnknownAgent", action_type="message")
-        orch.director_llm.generate_response = AsyncMock(return_value=action_resp)
+        orch.director_llm.generate_response = AsyncMock(side_effect=[action_resp, action_resp, action_resp])
         orch.performer_llm.generate_response = AsyncMock(return_value="Hi")
         orch.moderator_llm.generate_response = AsyncMock(return_value="Hi")
 
         result = await orch.execute_turn("criteria_A")
-        assert result is not None
-        assert result.agent_name in ("Alice", "Bob")
-        logger.log_error.assert_called()
+        assert result is None
+        logger.log_error.assert_any_call(
+            "director_action_unknown_performer_label",
+            "attempt 1/3: Director returned next_performer 'UnknownAgent', which is not one of the visible performer labels in AGENT_PROFILES",
+        )
 
 
 # â”€â”€ Performer retry logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1478,7 +1478,7 @@ class TestOutputDeanonymization:
         result = await orch.execute_turn("criteria_A")
         assert result is not None
         assert "Bob" in result.message.content
-        assert anon_bob not in result.message.content
+        assert result.message.content == "I agree with Bob!"
 
 
 # â”€â”€ TurnResult dataclass â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1520,5 +1520,6 @@ class TestTurnResult:
         assert result.priority is None
         assert result.performer_rationale is None
         assert result.action_rationale is None
+
 
 

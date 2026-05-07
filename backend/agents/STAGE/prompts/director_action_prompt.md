@@ -76,8 +76,8 @@ Then apply this rule:
 - Agents from different cells are never allies, even if they both oppose the same message, policy, or person.
 - Do not build "coalitions" across cells. Different cells may attack the same target, but they should do so from their own frame rather than sounding coordinated or mutually validating.
 
-**Performer labels are stable:**
-- The performer labels shown in `AGENT_PROFILES` refer to the same underlying people for the entire session.
+**Use real agent names as stable labels:**
+- The labels shown in `AGENT_PROFILES` are the agents' real names and refer to the same underlying people for the entire session.
 - They do **not** change from turn to turn.
 - Use the labels exactly as shown in `AGENT_PROFILES`.
 - `next_performer` must exactly match one visible performer label from `AGENT_PROFILES`.
