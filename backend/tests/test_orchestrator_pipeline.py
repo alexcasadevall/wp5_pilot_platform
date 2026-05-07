@@ -1,7 +1,7 @@
-"""Tests for the full Orchestrator pipeline (Director Update → Evaluate → Act → Performer → Moderator).
+﻿"""Tests for the full Orchestrator pipeline (Director Update â†’ Evaluate â†’ Act â†’ Performer â†’ Moderator).
 
 Uses mock LLM clients to test the orchestration logic without external API calls.
-Anonymization helpers are tested separately in test_anonymization.py — these tests
+Anonymization helpers are tested separately in test_anonymization.py â€” these tests
 focus on execute_turn() flow, the three-call Director, agent profile accumulation,
 retry logic, and action routing.
 """
@@ -21,7 +21,7 @@ from agents.STAGE.orchestrator import (
 )
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _make_state(**overrides) -> SessionState:
     defaults = dict(
@@ -111,8 +111,8 @@ def _action_json(
 ):
     """Build a valid Director Action JSON response.
 
-    Note: next_performer/target_user should use anonymized names (Performer N)
-    since the Director operates in the anonymized space.
+    Note: next_performer/target_user should use the exact stable labels visible
+    to the Director for this session.
     """
     data = {
         "next_performer": next_performer,
@@ -134,7 +134,7 @@ def _action_json(
     return json.dumps(data)
 
 
-# ── Orchestrator construction ────────────────────────────────────────────────
+# â”€â”€ Orchestrator construction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestOrchestratorInit:
 
@@ -144,8 +144,8 @@ class TestOrchestratorInit:
         assert "Alice" in orch._name_map
         assert "Bob" in orch._name_map
         assert "participant" in orch._name_map
-        assert orch._name_map["Alice"].startswith("Performer ")
-        assert orch._name_map["Bob"].startswith("Performer ")
+        assert orch._name_map["Alice"] == "Alice"
+        assert orch._name_map["Bob"] == "Bob"
         assert orch._name_map["participant"] == "participant"
 
     def test_reverse_map(self):
@@ -176,7 +176,7 @@ class TestOrchestratorInit:
         state = _make_state(participant_stance_hint="against")
         state.add_message(Message.create(
             sender="participant",
-            content="La inmigración es un derecho pero este plan está mal planteado",
+            content="La inmigraciÃ³n es un derecho pero este plan estÃ¡ mal planteado",
         ))
         orch, _ = _make_orchestrator(state=state)
         assert orch._participant_alignment_cell_live() == "anti_policy_pro_topic"
@@ -185,7 +185,7 @@ class TestOrchestratorInit:
         state = _make_state(participant_stance_hint="against")
         state.add_message(Message.create(
             sender="participant",
-            content="No sé, tengo dudas todavía",
+            content="No sÃ©, tengo dudas todavÃ­a",
         ))
         orch, _ = _make_orchestrator(state=state)
         assert orch._participant_alignment_cell_live() == "anti_policy_anti_topic"
@@ -319,7 +319,7 @@ class TestOrchestratorInit:
         assert Orchestrator._looks_like_agent_validation("No, eso no funciona.") is False
 
 
-# ── execute_turn: first turn (skip Update, warm-up Evaluate) ─────────────────
+# â”€â”€ execute_turn: first turn (skip Update, warm-up Evaluate) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestFirstTurn:
 
@@ -358,7 +358,7 @@ class TestFirstTurn:
         assert orch._ecological_validity_summary == "Conversation looks natural."
 
 
-# ── execute_turn: Update + Evaluate + Act (second turn onwards) ──────────────
+# â”€â”€ execute_turn: Update + Evaluate + Act (second turn onwards) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestUpdateEvaluateAndAct:
 
@@ -501,7 +501,7 @@ class TestUpdateEvaluateAndAct:
         assert orch.agent_profiles[anon_bob] == ""
 
 
-# ── execute_turn: message action ─────────────────────────────────────────────
+# â”€â”€ execute_turn: message action â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestExecuteTurnMessage:
 
@@ -572,7 +572,7 @@ class TestExecuteTurnMessage:
         )
 
 
-# ── execute_turn: like action ────────────────────────────────────────────────
+# â”€â”€ execute_turn: like action â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestExecuteTurnLike:
 
@@ -602,7 +602,7 @@ class TestExecuteTurnLike:
         orch.performer_llm.generate_response.assert_not_called()
 
 
-# ── execute_turn: reply action ───────────────────────────────────────────────
+# â”€â”€ execute_turn: reply action â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestExecuteTurnReply:
 
@@ -695,7 +695,7 @@ class TestExecuteTurnReply:
         )
 
 
-# ── execute_turn: mention action ─────────────────────────────────────────────
+# â”€â”€ execute_turn: mention action â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestExecuteTurnMention:
 
@@ -850,19 +850,19 @@ class TestSameSideGuard:
         )
 
 
-# ── execute_turn: wait (yield to participant) ────────────────────────────────
+# â”€â”€ execute_turn: wait (yield to participant) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestExecuteTurnWait:
-    """Director selects the human participant → turn short-circuits as 'wait'.
+    """Director selects the human participant â†’ turn short-circuits as 'wait'.
 
-    The Director is blind to who is human — it just picks a performer.
+    The Director is blind to who is human â€” it just picks a performer.
     The orchestrator detects that the chosen performer is the participant
     and converts this into a wait (skip Performer/Moderator).
     """
 
     @pytest.mark.asyncio
     async def test_selecting_participant_returns_wait(self):
-        """Director selects participant's anonymous name → treated as wait."""
+        """Director selects participant's anonymous name â†’ treated as wait."""
         state = _make_state()
         orch, logger = _make_orchestrator(state=state)
 
@@ -1069,13 +1069,13 @@ class TestFixedStanceGuard:
         orch.performer_llm.generate_response = AsyncMock(
             side_effect=[
                 "Este plan es necesario y justo.",
-                "Este plan es una vergüenza total.",
+                "Este plan es una vergÃ¼enza total.",
             ]
         )
         orch.moderator_llm.generate_response = AsyncMock(
             side_effect=[
                 "Este plan es necesario y justo.",
-                "Este plan es una vergüenza total.",
+                "Este plan es una vergÃ¼enza total.",
             ]
         )
         orch.classifier_llm.generate_response = AsyncMock(
@@ -1108,7 +1108,7 @@ class TestFixedStanceGuard:
 
         assert result is not None
         assert result.action_type == "message"
-        assert result.message.content == "Este plan es una vergüenza total."
+        assert result.message.content == "Este plan es una vergÃ¼enza total."
         assert result.message.is_like_minded is True
         assert orch.performer_llm.generate_response.call_count == 2
         logger.log_error.assert_any_call(
@@ -1130,10 +1130,10 @@ class TestFixedStanceGuard:
             return_value=_action_json(next_performer=anon_alice, action_type="message")
         )
         orch.performer_llm.generate_response = AsyncMock(
-            return_value="Este plan es una vergüenza total."
+            return_value="Este plan es una vergÃ¼enza total."
         )
         orch.moderator_llm.generate_response = AsyncMock(
-            return_value="Este plan es una vergüenza total."
+            return_value="Este plan es una vergÃ¼enza total."
         )
         orch.classifier_llm.generate_response = AsyncMock(
             return_value=json.dumps({
@@ -1149,7 +1149,7 @@ class TestFixedStanceGuard:
 
         assert result is not None
         assert result.message is not None
-        assert result.message.content == "Este plan es una vergüenza total."
+        assert result.message.content == "Este plan es una vergÃ¼enza total."
         assert orch.classifier_llm.generate_response.call_count == 1
 
     @pytest.mark.asyncio
@@ -1259,10 +1259,10 @@ class TestFixedStanceGuard:
             return_value=_action_json(next_performer=anon_alice, action_type="message")
         )
         orch.performer_llm.generate_response = AsyncMock(
-            return_value="Este plan es una vergüenza y hay que frenarlo."
+            return_value="Este plan es una vergÃ¼enza y hay que frenarlo."
         )
         orch.moderator_llm.generate_response = AsyncMock(
-            return_value="Este plan es una vergüenza y hay que frenarlo."
+            return_value="Este plan es una vergÃ¼enza y hay que frenarlo."
         )
         orch.classifier_llm.generate_response = AsyncMock(
             return_value=json.dumps({
@@ -1287,7 +1287,7 @@ class TestFixedStanceGuard:
         )
 
 
-# ── execute_turn: error handling ─────────────────────────────────────────────
+# â”€â”€ execute_turn: error handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestExecuteTurnErrors:
 
@@ -1321,12 +1321,55 @@ class TestExecuteTurnErrors:
         logger.log_error.assert_called()
 
     @pytest.mark.asyncio
+    async def test_director_action_retries_when_performer_label_is_not_visible(self):
+        state = _make_state()
+        orch, logger = _make_orchestrator(state=state)
+        anon_alice = orch._name_map["Alice"]
+        orch.director_llm.generate_response = AsyncMock(
+            side_effect=[
+                _action_json(next_performer="Performer 99", action_type="message"),
+                _action_json(next_performer=anon_alice, action_type="message"),
+            ]
+        )
+
+        result = await orch._director_action(anon_recent=[])
+
+        assert result is not None
+        assert result["next_performer"] == anon_alice
+        logger.log_error.assert_any_call(
+            "director_action_unknown_performer_label",
+            "attempt 1/3: Director returned next_performer 'Performer 99', which is not one of the visible performer labels in AGENT_PROFILES",
+        )
+
+    @pytest.mark.asyncio
+    async def test_director_action_retries_when_target_user_label_is_not_visible(self):
+        state = _make_state()
+        orch, logger = _make_orchestrator(state=state)
+        anon_alice = orch._name_map["Alice"]
+        anon_bob = orch._name_map["Bob"]
+        orch.director_llm.generate_response = AsyncMock(
+            side_effect=[
+                _action_json(next_performer=anon_alice, action_type="@mention", target_user="Performer 99"),
+                _action_json(next_performer=anon_alice, action_type="@mention", target_user=anon_bob),
+            ]
+        )
+
+        result = await orch._director_action(anon_recent=[])
+
+        assert result is not None
+        assert result["target_user"] == anon_bob
+        logger.log_error.assert_any_call(
+            "director_action_unknown_target_label",
+            "attempt 1/3: Director returned target_user 'Performer 99', which is not one of the visible performer labels in AGENT_PROFILES",
+        )
+
+    @pytest.mark.asyncio
     async def test_no_agents_returns_wait(self):
-        """With no agents, only the participant is available — Director must yield."""
+        """With no agents, only the participant is available â€” Director must yield."""
         state = _make_state(agents=[])
         orch, logger = _make_orchestrator(state=state)
         orch.director_llm.generate_response = AsyncMock(
-            return_value=_action_json(next_performer="Performer 1")
+            return_value=_action_json(next_performer="participant")
         )
 
         result = await orch.execute_turn("criteria_A")
@@ -1335,7 +1378,7 @@ class TestExecuteTurnErrors:
 
     @pytest.mark.asyncio
     async def test_unknown_agent_falls_back(self):
-        """Director picks a name not in agents list → falls back to random valid agent."""
+        """Director picks a name not in agents list â†’ falls back to random valid agent."""
         state = _make_state()
         orch, logger = _make_orchestrator(state=state)
 
@@ -1350,7 +1393,7 @@ class TestExecuteTurnErrors:
         logger.log_error.assert_called()
 
 
-# ── Performer retry logic ────────────────────────────────────────────────────
+# â”€â”€ Performer retry logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestPerformerRetry:
 
@@ -1393,7 +1436,7 @@ class TestPerformerRetry:
 
     @pytest.mark.asyncio
     async def test_moderator_no_content_triggers_retry(self):
-        """Moderator returns NO_CONTENT → triggers performer retry."""
+        """Moderator returns NO_CONTENT â†’ triggers performer retry."""
         state = _make_state()
         orch, logger = _make_orchestrator(state=state)
         anon_alice = orch._name_map["Alice"]
@@ -1413,7 +1456,7 @@ class TestPerformerRetry:
         assert result.message.content == "Cleaned output"
 
 
-# ── Deanonymization in output ────────────────────────────────────────────────
+# â”€â”€ Deanonymization in output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestOutputDeanonymization:
 
@@ -1438,7 +1481,7 @@ class TestOutputDeanonymization:
         assert anon_bob not in result.message.content
 
 
-# ── TurnResult dataclass ────────────────────────────────────────────────────
+# â”€â”€ TurnResult dataclass â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestTurnResult:
 
@@ -1477,3 +1520,5 @@ class TestTurnResult:
         assert result.priority is None
         assert result.performer_rationale is None
         assert result.action_rationale is None
+
+

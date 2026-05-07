@@ -1,4 +1,4 @@
-"""Unit tests for agents/STAGE/director.py — parsing and formatting (Update + Evaluate + Action)."""
+﻿"""Unit tests for agents/STAGE/director.py â€” parsing and formatting (Update + Evaluate + Action)."""
 import json
 import pytest
 from datetime import datetime, timezone
@@ -20,7 +20,7 @@ from agents.STAGE.director import (
 )
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _msg(sender="Alice", content="Hello", msg_id="msg-1", **kwargs):
     return Message(
@@ -32,7 +32,7 @@ def _msg(sender="Alice", content="Hello", msg_id="msg-1", **kwargs):
     )
 
 
-# ── format_chat_log ─────────────────────────────────────────────────────────
+# â”€â”€ format_chat_log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestFormatChatLog:
     def test_empty_messages(self):
@@ -86,7 +86,7 @@ class TestFormatChatLog:
         assert "Very long article body" not in result
 
 
-# ── format_agent_profiles ──────────────────────────────────────────────────
+# â”€â”€ format_agent_profiles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestFormatAgentProfiles:
     def test_empty_profiles(self):
@@ -272,6 +272,17 @@ class TestBuildActionSystemPrompt:
         assert "must not attack, blame, mock, or undermine the participant" in prompt
         assert "Agents may only explicitly validate, agree with, echo, or back up other agents from their own exact `alignment_cell`" in prompt
 
+    def test_marks_anonymous_performer_labels_as_stable(self):
+        prompt = build_action_system_prompt(
+            chatroom_context="Debate migratorio",
+            participant_stance_hint="participant self-report: against the article",
+            participant_alignment_cell="participant alignment cell: anti_policy_anti_topic",
+            participant_name="Martin",
+        )
+        assert "Performer labels are stable" in prompt
+        assert "do **not** change from turn to turn" in prompt
+        assert "`next_performer` must exactly match one visible performer label from `AGENT_PROFILES`" in prompt
+
     def test_evaluate_prompt_requests_short_assessments(self):
         prompt = build_evaluate_system_prompt(
             internal_validity_criteria="Balance",
@@ -286,7 +297,7 @@ class TestBuildActionSystemPrompt:
         assert "1-2 short sentences" in prompt
 
 
-# ── parse_update_response — valid inputs ─────────────────────────────────────
+# â”€â”€ parse_update_response â€” valid inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestParseUpdateResponseValid:
     def test_plain_json(self):
@@ -300,7 +311,7 @@ class TestParseUpdateResponseValid:
         assert data["performer_profile_update"] == "neutral"
 
 
-# ── parse_update_response — invalid inputs ───────────────────────────────────
+# â”€â”€ parse_update_response â€” invalid inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestParseUpdateResponseInvalid:
     def test_not_json(self):
@@ -313,7 +324,7 @@ class TestParseUpdateResponseInvalid:
             parse_update_response(raw)
 
 
-# ── parse_evaluate_response — valid inputs ───────────────────────────────────
+# â”€â”€ parse_evaluate_response â€” valid inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestParseEvaluateResponseValid:
     def test_plain_json(self):
@@ -331,7 +342,7 @@ class TestParseEvaluateResponseValid:
         assert data["internal_validity_evaluation"] == "ok"
 
 
-# ── parse_evaluate_response — invalid inputs ─────────────────────────────────
+# â”€â”€ parse_evaluate_response â€” invalid inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestParseEvaluateResponseInvalid:
     def test_not_json(self):
@@ -349,7 +360,7 @@ class TestParseEvaluateResponseInvalid:
             parse_evaluate_response(raw)
 
 
-# ── parse_action_response — valid inputs ────────────────────────────────────────
+# â”€â”€ parse_action_response â€” valid inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestParseActionResponseValid:
     def test_plain_json(self):
@@ -419,7 +430,7 @@ class TestParseActionResponseValid:
         assert "performer_instruction" not in data
 
 
-# ── parse_action_response — invalid inputs ──────────────────────────────────────
+# â”€â”€ parse_action_response â€” invalid inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestParseActionResponseInvalid:
     def test_not_json(self):
@@ -478,3 +489,4 @@ class TestParseActionResponseInvalid:
         })
         with pytest.raises(ValueError, match="performer_instruction"):
             parse_action_response(raw)
+
