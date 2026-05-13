@@ -384,6 +384,45 @@ class Orchestrator:
         ))
 
     @staticmethod
+    def _looks_like_attack_on_participant(content: Optional[str]) -> bool:
+        """Heuristic guard for direct, adversarial language aimed at the participant."""
+        if not content:
+            return False
+        normalized = " ".join(str(content).lower().split())
+        return bool(re.search(
+            r"\b("
+            r"deja de|no digas|no vayas|calla|"
+            r"eres|es pat[eé]tico|pat[eé]tico|rid[ií]culo|"
+            r"estupideces|tonter[ií]as|gilipolleces|mierda|"
+            r"imb[eé]cil|idiota|analfabeta|ignorante|ingenuo"
+            r")\b",
+            normalized,
+        ))
+
+    @staticmethod
+    def _performer_output_needs_moderator(content: Optional[str]) -> bool:
+        """Return True when performer output looks too messy to publish directly."""
+        if not content:
+            return True
+        text = str(content).strip()
+        if not text or text == "NO_CONTENT":
+            return True
+        if "```" in text:
+            return True
+        if text.startswith("{") or text.startswith("["):
+            return True
+        if re.search(
+            r"^\s*(mensaje|respuesta|message|objective|motivation|directive)\s*:",
+            text,
+            re.IGNORECASE | re.MULTILINE,
+        ):
+            return True
+        if re.search(r"^\s*[-*]\s+", text, re.MULTILINE):
+            return True
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        return len(lines) > 1
+
+    @staticmethod
     def _normalize_participant_stance_hint(raw_stance: Optional[str]) -> Optional[str]:
         """Collapse participant stance hints to comparable buckets."""
         if not raw_stance:
@@ -963,6 +1002,14 @@ class Orchestrator:
                 return message
         return None
 
+    def _can_like_message(self, actor_name: str, message: Message) -> bool:
+        """Return True when a like would be coherent with cell-based validation rules."""
+        if not message or message.sender in {actor_name, "[news]"}:
+            return False
+        if message.sender == self.state.user_name:
+            return self._expected_like_minded_for_agent(actor_name) is True
+        return self._agents_share_alignment_cell(actor_name, message.sender)
+
     def _format_target_constraints_by_speaker(
         self,
         eligible_anon_names: Set[str],
@@ -1190,6 +1237,7 @@ class Orchestrator:
                 m for m in reversed(recent)
                 if agent_name not in (m.liked_by or set())
                 and m.sender != agent_name
+                and self._can_like_message(agent_name, m)
             ]
             if not likeable:
                 continue
@@ -1546,19 +1594,38 @@ class Orchestrator:
                     )
                     action_data["performer_instruction"] = existing_instruction
 
-        if action_type in {"reply", "@mention", "message"} and target_user == self.state.user_name:
-            if self._expected_like_minded_for_agent(agent_name) is True:
-                existing_instruction = dict(action_data.get("performer_instruction") or {})
-                directive = (existing_instruction.get("directive") or "").strip()
-                support_clause = (
-                    "Your alignment cell matches the participant's current cell: do not attack, blame, mock, or "
-                    "undermine the participant. You may defend them, reinforce them, or sharpen their shared case."
+        participant_targeted_message = None
+        if action_type in {"reply", "@mention", "message"}:
+            if target_user == self.state.user_name:
+                participant_targeted_message = next(
+                    (
+                        m for m in self.state.messages
+                        if m.sender == self.state.user_name
+                        and (not target_message_id or m.message_id == target_message_id)
+                    ),
+                    None,
                 )
-                existing_instruction["directive"] = (
-                    f"{directive} {support_clause}".strip()
-                    if directive else support_clause
+            elif target_message_id:
+                participant_targeted_message = next(
+                    (
+                        m for m in self.state.messages
+                        if m.message_id == target_message_id and m.sender == self.state.user_name
+                    ),
+                    None,
                 )
-                action_data["performer_instruction"] = existing_instruction
+
+        if participant_targeted_message is not None and self._expected_like_minded_for_agent(agent_name) is True:
+            existing_instruction = dict(action_data.get("performer_instruction") or {})
+            directive = (existing_instruction.get("directive") or "").strip()
+            support_clause = (
+                "Your alignment cell matches the participant's current cell: do not attack, blame, mock, or "
+                "undermine the participant. You may defend them, reinforce them, or sharpen their shared case."
+            )
+            existing_instruction["directive"] = (
+                f"{directive} {support_clause}".strip()
+                if directive else support_clause
+            )
+            action_data["performer_instruction"] = existing_instruction
 
         # 3b. Handle 'wait' — Director selected the human participant.
         #     Skip Performer/Moderator and restore evaluate counter
@@ -1764,45 +1831,48 @@ class Orchestrator:
                 )
                 continue
 
-            # 5b. Call the Moderator to extract clean content
-            moderator_user_prompt = build_moderator_user_prompt(
-                performer_output=performer_raw,
-                template=self.moderator_prompt_template,
-            )
-
-            moderator_raw = None
-            try:
-                moderator_raw = await self.moderator_llm.generate_response(
-                    moderator_user_prompt, max_retries=1,
-                    system_prompt=self._moderator_system_prompt,
+            # 5b. Only call the Moderator when the performer output looks messy.
+            if self._performer_output_needs_moderator(performer_raw):
+                moderator_user_prompt = build_moderator_user_prompt(
+                    performer_output=performer_raw,
+                    template=self.moderator_prompt_template,
                 )
-            except Exception as e:
-                self.logger.log_error("moderator_llm_call", str(e))
 
-            self.logger.log_llm_call(
-                agent_name="__moderator__",
-                prompt=f"[SYSTEM]\n{self._moderator_system_prompt}\n\n[USER]\n{moderator_user_prompt}",
-                response=moderator_raw,
-                error=None if moderator_raw else f"Moderator LLM returned no response (attempt {attempt}/{MAX_PERFORMER_RETRIES})",
-            )
+                moderator_raw = None
+                try:
+                    moderator_raw = await self.moderator_llm.generate_response(
+                        moderator_user_prompt, max_retries=1,
+                        system_prompt=self._moderator_system_prompt,
+                    )
+                except Exception as e:
+                    self.logger.log_error("moderator_llm_call", str(e))
 
-            content = parse_moderator_response(moderator_raw)
-
-            if content is None:
-                self.logger.log_error(
-                    "moderator_no_content",
-                    f"Moderator could not extract content from performer output (attempt {attempt}/{MAX_PERFORMER_RETRIES})",
+                self.logger.log_llm_call(
+                    agent_name="__moderator__",
+                    prompt=f"[SYSTEM]\n{self._moderator_system_prompt}\n\n[USER]\n{moderator_user_prompt}",
+                    response=moderator_raw,
+                    error=None if moderator_raw else f"Moderator LLM returned no response (attempt {attempt}/{MAX_PERFORMER_RETRIES})",
                 )
-                continue
 
-            if _looks_truncated_response(content):
-                self.logger.log_error(
-                    "moderator_output_truncated",
-                    f"Moderator output appears truncated (attempt {attempt}/{MAX_PERFORMER_RETRIES})",
-                    context={"agent_name": agent_name, "action_type": action_type},
-                )
-                content = None
-                continue
+                content = parse_moderator_response(moderator_raw)
+
+                if content is None:
+                    self.logger.log_error(
+                        "moderator_no_content",
+                        f"Moderator could not extract content from performer output (attempt {attempt}/{MAX_PERFORMER_RETRIES})",
+                    )
+                    continue
+
+                if _looks_truncated_response(content):
+                    self.logger.log_error(
+                        "moderator_output_truncated",
+                        f"Moderator output appears truncated (attempt {attempt}/{MAX_PERFORMER_RETRIES})",
+                        context={"agent_name": agent_name, "action_type": action_type},
+                    )
+                    content = None
+                    continue
+            else:
+                content = performer_raw.strip()
 
             # Canonicalize the candidate text before stance validation so the
             # classifier sees the same message that would be published.
@@ -1868,6 +1938,32 @@ class Orchestrator:
                     "Your last draft sounded validating toward an agent from a different alignment cell.\n"
                     "Rewrite it so you stay clearly inside your own cell. You may attack the same opponent or "
                     "respond to the same topic, but do not agree with, praise, echo, or pile on in support of the target."
+                )
+                content = None
+                continue
+
+            participant_target_for_validation = None
+            if target_user == self.state.user_name:
+                participant_target_for_validation = self.state.user_name
+            elif target_message and target_message.sender == self.state.user_name:
+                participant_target_for_validation = self.state.user_name
+
+            if (
+                participant_target_for_validation
+                and self._expected_like_minded_for_agent(agent_name) is True
+                and self._looks_like_attack_on_participant(candidate_content)
+            ):
+                self.logger.log_error(
+                    "performer_like_minded_participant_attack_retry",
+                    f"Generated message for '{agent_name}' attacked same-cell participant '{self.state.user_name}'; retrying",
+                    context={"action_type": action_type},
+                )
+                performer_user_prompt = (
+                    f"{base_performer_user_prompt}\n\n"
+                    "Important correction:\n"
+                    "Your last draft turned against the participant even though your exact alignment cell matches theirs.\n"
+                    "Rewrite it so you support, defend, or sharpen the participant's case. Do not scold them, call them names, "
+                    "or frame them as the problem."
                 )
                 content = None
                 continue
@@ -2244,11 +2340,12 @@ class Orchestrator:
                     (message for message in self.state.messages if message.message_id == action_data["target_message_id"]),
                     None,
                 )
-                if reply_target is not None and not self._can_directly_target_message(speaker_real, reply_target):
+                if reply_target is not None and not self._can_reply_to_message(speaker_real, reply_target):
                     self.logger.log_error(
                         "director_action_invalid_reply_target",
                         f"attempt {attempt + 1}/{MAX_ACTION_ATTEMPTS}: Director returned reply target "
-                        f"'{action_data['target_message_id']}' for '{selected_performer}', but that message is not a valid direct target",
+                        f"'{action_data['target_message_id']}' for '{selected_performer}', but that message is not "
+                        "a valid reply target for the chosen speaker",
                     )
                     continue
 
@@ -2259,5 +2356,3 @@ class Orchestrator:
             f"Director Action gave no valid response after {MAX_ACTION_ATTEMPTS} attempts — skipping turn",
         )
         return None
-
-
