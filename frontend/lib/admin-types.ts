@@ -82,6 +82,8 @@ export interface PoolAgent {
   topic_stance: AgentTopicStance
   alignment_cell: AgentAlignmentCell
   persona: string
+  message_length_min?: number
+  message_length_max?: number
 }
 
 export interface SeedArticle {

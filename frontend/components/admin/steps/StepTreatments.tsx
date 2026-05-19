@@ -399,6 +399,33 @@ function AgentPoolEditor({
                 placeholder="Describe the agent's personality, background, and communication style..."
               />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-admin-muted mb-1">
+                Message length range <span className="text-admin-faint font-normal">(words, optional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={agent.message_length_min ?? ""}
+                  onChange={(e) => updateAgent(index, { message_length_min: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  className={`${inputClass} w-24`}
+                  placeholder="min"
+                />
+                <span className="text-admin-faint text-xs">–</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={agent.message_length_max ?? ""}
+                  onChange={(e) => updateAgent(index, { message_length_max: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  className={`${inputClass} w-24`}
+                  placeholder="max"
+                />
+                <span className="text-admin-faint text-xs">A random value in this range is picked each turn. Leave empty for default (short).</span>
+              </div>
+            </div>
             {humanizeEnabled && onHumanizePerAgentChange && (() => {
               const perAgent = humanizePerAgent ?? {}
               const hasOverride = agent.name in perAgent
