@@ -105,35 +105,29 @@ Read the recent chat log and current action distribution below. What action type
 
 Select exactly one action type:
 
-- `message`: A new chat message. Use this in only two cases:
-  1. the performer is posting their first message of the session, or
-  2. they are responding to the most recent speaker without quoting or @mentioning them.
-  Do not use `message` for older messages or for general room-wide commentary unless there is no natural target.
-- `reply`: A quote-reply to a specific earlier message that is not the most recent one. Requires `target_message_id`.
-- `@mention`: A message that explicitly calls a specific performer back into the conversation when that performer did not send the most recent message. Requires `target_user`.
+- `message`: A standalone chat message. Can be a reaction to the general conversation, to something said recently, or a new thread entirely — without quoting or @mentioning anyone. This is the most natural action and should be used freely.
+- `reply`: A quote-reply to a specific earlier message. Use when directly engaging a particular message adds clarity or drama. Requires `target_message_id`.
+- `@mention`: A message that explicitly calls someone back into the conversation. Use when the performer is picking up a thread that has moved on. Requires `target_user`.
+
 Rules:
-- Prefer reacting to a recent person or message rather than speaking to the room in general.
-- A non-targeted room-wide `message` should be rare, maximum 3 times in a session.
-- Avoid consecutive true room-wide openers when there is any plausible recent anchor.
-- If a performer is posting for the first time and reacting to the latest speaker, a plain `message` is fully valid and often more natural than a `reply`.
-- If there is a natural recent target, use `message`, `reply`, or `@mention` instead of a room-wide opener.
+- `message` is the default. Only use `reply` or `@mention` when the quoting or calling-out adds something — tension, precision, drama. Do not use them just because an anchor exists.
+- A performer can react to the mood or content of the conversation without targeting anyone specifically. That is normal chat behavior.
+- Room-wide openers are fine and realistic. People post standalone opinions without replying to anyone all the time.
 - If using `message` for an underrepresented side, name who or what the performer is pushing against, and who they must not validate or echo. Avoid vague instructions like "reinforce your side" with no named target.
 
 **Action mix guidelines:**
-- Target approximately: 45% messages, 35% replies, 20% @mentions.
-- After any agent or participant posts a substantive message, at least one other agent should `reply` to it before the conversation moves on.
+- Target approximately: 55% messages, 30% replies, 15% @mentions.
+- Not every substantive message needs a direct reply. Let some messages go unanswered or be responded to indirectly through a standalone `message`.
 
 **Chained reactions - participant interaction:**
 - If the human participant's most recent message @mentioned or addressed a specific agent by name, and no agent has replied yet, that agent MUST reply (use `reply` with the participant's `message_id`). This overrides all other considerations.
 - If the participant replied to an agent's message (i.e. `reply_to` points at an agent message), that same agent should be the next performer and reply back.
 
-**Reply/mention when not addressing the latest message:** If the performer is responding to someone whose message is NOT the most recent in the chat log, always use `reply` (with `target_message_id`) or `@mention` (with `target_user`) - never a plain `message`. This prevents confusing out-of-context responses.
+**Reply/mention when not addressing the latest message:** If the performer is responding to someone whose message is NOT the most recent in the chat log, prefer `reply` or `@mention` to avoid an out-of-context plain message — but use judgement; a `message` that clearly references the content is also acceptable.
 
-**If the latest message already gives you a natural anchor, use it:** When the room has a clear active thread, treat a new room-wide opener as the wrong choice. Prefer a targeted response to the most recent relevant speaker or message unless there is no plausible anchor at all.
+**Speaker-specific target constraints:** Once you choose a performer, obey the target constraints listed for that speaker. The listed best recent anchor is a suggestion, not a requirement — use it only if a targeted response genuinely fits.
 
-**Speaker-specific target constraints:** Once you choose a performer, obey the target constraints listed for that speaker. If a speaker has a listed best recent anchor, use it as the default conversation anchor, but choose between `message`, `reply`, and `@mention` based on what feels most natural for that speaker's turn.
-
-**Do not over-convert first entries into replies:** When a new speaker is entering an already active thread, they do not need a quote-reply just because an anchor exists. If they are reacting to the latest speaker, a plain `message` can be the better choice.
+**Do not over-convert entries into replies:** A performer entering an active thread does not need to quote anyone. A plain `message` that joins the conversation is often more natural.
 
 **Variety:** Avoid two consecutive actions from the same agent unless a direct follow-up from that same agent is clearly necessary.
 
